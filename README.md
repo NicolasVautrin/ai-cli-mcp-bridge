@@ -28,18 +28,23 @@ npm install
 
 ## Configuration
 
-Add the server to your Claude Code MCP settings (`~/.claude/settings.json` or project `.claude/settings.local.json`):
+Register the MCP server with Claude Code using the CLI:
 
-```json
-{
-  "mcpServers": {
-    "ai-bridge": {
-      "command": "node",
-      "args": ["C:/path/to/ai-cli-mcp-bridge/server.js"]
-    }
-  }
-}
+```bash
+# User-level (available in all projects)
+claude mcp add --scope user ai-bridge -- node /path/to/ai-cli-mcp-bridge/server.js
+
+# Project-level (current project only)
+claude mcp add ai-bridge -- node /path/to/ai-cli-mcp-bridge/server.js
 ```
+
+Verify the server is connected:
+
+```bash
+claude mcp list
+```
+
+> **Note:** Adding the server to `~/.claude/.mcp.json` or `settings.json` directly does not work — `settings.json` does not support a `mcpServers` field, and `.mcp.json` servers require manual approval. The `claude mcp add` command handles registration correctly.
 
 ## Usage examples
 
