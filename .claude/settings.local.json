@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm list:*)",
+      "mcp__ai-bridge__ai_chat",
+      "mcp__ai-bridge__ai_sessions",
+      "mcp__ai-bridge__ai_drop",
+      "mcp__ai-bridge__ai_summarize"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "ai-bridge"
+  ]
+}
