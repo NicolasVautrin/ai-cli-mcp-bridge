@@ -4,6 +4,13 @@ const path = require('path');
 const SESSIONS_DIR = path.join(process.env.HOME || process.env.USERPROFILE, '.ai-cli-bridge');
 const SESSIONS_FILE = path.join(SESSIONS_DIR, 'sessions.json');
 
+// Simple async mutex to serialize read-modify-write on sessions.json
+let lock = Promise.resolve();
+function withLock(fn) {
+  lock = lock.then(fn, fn);
+  return lock;
+}
+
 function load() {
   try {
     return JSON.parse(fs.readFileSync(SESSIONS_FILE, 'utf8'));
@@ -18,14 +25,16 @@ function save(data) {
 }
 
 function upsert(session) {
-  const data = load();
-  const idx = data.sessions.findIndex(s => s.id === session.id && s.provider === session.provider);
-  if (idx >= 0) {
-    data.sessions[idx] = { ...data.sessions[idx], ...session };
-  } else {
-    data.sessions.push(session);
-  }
-  save(data);
+  return withLock(() => {
+    const data = load();
+    const idx = data.sessions.findIndex(s => s.id === session.id && s.provider === session.provider);
+    if (idx >= 0) {
+      data.sessions[idx] = { ...data.sessions[idx], ...session };
+    } else {
+      data.sessions.push(session);
+    }
+    save(data);
+  });
 }
 
 function list({ provider, limit = 10, skip = 0, search } = {}) {
@@ -42,11 +51,13 @@ function list({ provider, limit = 10, skip = 0, search } = {}) {
 }
 
 function drop(provider, sessionId) {
-  const data = load();
-  const before = data.sessions.length;
-  data.sessions = data.sessions.filter(s => !(s.id === sessionId && s.provider === provider));
-  save(data);
-  return data.sessions.length < before;
+  return withLock(() => {
+    const data = load();
+    const before = data.sessions.length;
+    data.sessions = data.sessions.filter(s => !(s.id === sessionId && s.provider === provider));
+    save(data);
+    return data.sessions.length < before;
+  });
 }
 
 function get(provider, sessionId) {

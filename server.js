@@ -1,3 +1,15 @@
+const fs = require('fs');
+const path = require('path');
+const CRASH_LOG = path.join(process.env.HOME || process.env.USERPROFILE, '.ai-cli-bridge', 'crash.log');
+
+function logCrash(label, err) {
+  const line = `[${new Date().toISOString()}] ${label}: ${err?.stack || err}\n`;
+  try { fs.mkdirSync(path.dirname(CRASH_LOG), { recursive: true }); fs.appendFileSync(CRASH_LOG, line); } catch {}
+}
+
+process.on('unhandledRejection', (err) => logCrash('unhandledRejection', err));
+process.on('uncaughtException', (err) => logCrash('uncaughtException', err));
+
 const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
 const { z } = require('zod');
@@ -22,8 +34,9 @@ server.tool(
     prompt: z.string().describe('The message to send'),
     sessionId: z.string().optional().describe('Resume an existing session (omit for new)'),
     cwd: z.string().optional().describe('Working directory for the CLI'),
+    mode: z.enum(['auto', 'plan']).optional().default('auto').describe('Execution mode: auto (read+write, default) or plan (read-only, for architecture/review questions)'),
   },
-  async ({ provider, prompt, sessionId, cwd }) => {
+  async ({ provider, prompt, sessionId, cwd, mode }) => {
     const cli = providers[provider];
     if (!cli) return { content: [{ type: 'text', text: `Unknown provider: ${provider}` }], isError: true };
 
@@ -36,7 +49,7 @@ server.tool(
     if (!resolvedCwd) resolvedCwd = process.cwd();
 
     try {
-      const result = cli.chat(prompt, { sessionId, cwd: resolvedCwd });
+      const result = await cli.chat(prompt, { sessionId, cwd: resolvedCwd, mode });
       const sid = result.sessionId || sessionId || 'unknown';
 
       const existing = sessions.get(provider, sid);
@@ -46,7 +59,7 @@ server.tool(
       let summary = existing?.summary;
       if (!summary) {
         try {
-          const sumResult = cli.chat(
+          const sumResult = await cli.chat(
             `Summarize this exchange in one short sentence (max 60 chars). Reply only with the summary, no quotes.\n\nUser: ${prompt}\nAssistant: ${result.response}`,
             { cwd: resolvedCwd },
           );
@@ -56,7 +69,7 @@ server.tool(
         }
       }
 
-      sessions.upsert({
+      await sessions.upsert({
         id: sid,
         provider,
         created: existing?.created || new Date().toISOString(),
@@ -100,7 +113,7 @@ server.tool(
     sessionId: z.string().describe('Session ID to delete'),
   },
   async ({ provider, sessionId }) => {
-    const removed = sessions.drop(provider, sessionId);
+    const removed = await sessions.drop(provider, sessionId);
     return { content: [{ type: 'text', text: removed ? `Dropped ${sessionId}` : `Session not found: ${sessionId}` }] };
   },
 );
@@ -125,10 +138,10 @@ server.tool(
     const summaryPrompt = prompt || 'Summarize our conversation in one short sentence (max 60 chars). Reply only with the summary, no quotes.';
 
     try {
-      const result = cli.chat(summaryPrompt, { sessionId, cwd: existing.project });
+      const result = await cli.chat(summaryPrompt, { sessionId, cwd: existing.project });
       const summary = result.response.slice(0, 200);
 
-      sessions.upsert({ ...existing, summary, lastUsed: new Date().toISOString() });
+      await sessions.upsert({ ...existing, summary, lastUsed: new Date().toISOString() });
 
       return { content: [{ type: 'text', text: JSON.stringify({ sessionId, provider, summary }, null, 2) }] };
     } catch (err) {
